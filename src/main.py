@@ -1,3 +1,7 @@
+"""
+issue: cc/ conj対応
+issue: stanzaで構造解析を行う際に物語内の文章全て入力して同時に解析するのと一行ずつ分けて解析する場合とどちらが速度が速いか
+"""
 # 本コードの場合$CORENLP_HOMEの設定が必要ない
 import sys
 import re
@@ -6,24 +10,24 @@ import csv
 
 import stanza
 
+# 一旦大規模ファイルは気にしない(メモリに乗りきるサイズのみを想定)
+def file_load(filepath):
+  if os.path.isfile(filepath):
+    print("load file:" + filepath)
+    return open(filepath, 'r')
+  else:
+    print(filepath + " is not a file")
+
+def file_close(loaded_file):
+  loaded_file.close()
+
 class DependencyAnalysis:
   # filepath: 読み込みファイルのパス
   # config_gpu: 依存関係解析モデルをGPU上で動かすか否か
-  def __init__(self, filepath, config_gpu=False):
+  def __init__(self, config_gpu=False):
     self.all_result = []
-    self.filepath = filepath
     # gpuマシンで動かす場合、Falseを変更
     self.nlp = stanza.Pipeline('en', processors='tokenize, mwt, pos, lemma, depparse', use_gpu=config_gpu)
-
-  # 一旦大規模ファイルは気にしない(メモリに乗りきるサイズのみを想定)
-  def file_load(self):
-    if os.path.isfile(self.filepath):
-      print("load file:" + self.filepath)
-      self.load_file = open(self.filepath, 'r')
-
-  def file_close(self):
-    if os.path.isfile(self.filepath):
-      self.load_file.close()
 
   """
   主節動詞の抽出(非主節の場合は動詞はそもそも抽出されているのでこの関数を実行しない)
@@ -31,11 +35,13 @@ class DependencyAnalysis:
   dependent_root_id: 解析したい依存関係における、より根に近い単語のID
   """
   def extract_verbs(self, dep, dependent_root_id):
-    for i in dep:
-      if (i[1] == "root") or (i[0].id == dependent_root_id):
-        if 'VB' in i[2].xpos:
-          return i[2].id, i[2].text
-    return self.extract_verbs(dep, i[2].id)
+    for i in range(2):
+      for d in dep:
+        if (d[1] == "root") or (d[0].id == dependent_root_id):
+          if 'VB' in d[2].xpos:
+            return d[2].id, d[2].text
+          elif dependent_root_id == 0:
+            dependent_root_id = d[2].id
 
   """
   入力された動詞idに対する動作主体の抽出。取る可能性のある依存関係はcsubj:~,nsubj:~のみ。
@@ -88,42 +94,61 @@ class DependencyAnalysis:
   依存関係の抽出
   current_depends
   """
-  def extract_dependencies(self, current_depends):
+  def extract_dependencies(self, line_dependencies):
+    print(line_dependencies)
     # 探索した依存関係の根側単語id(初期値はrootのため0)
     dependent_root_id = 0
-    linear_result = []
-    linear_dependencies = current_depends.sentences[0].dependencies
+    line_result = []
 
     # 主節動詞抽出
-    main_clausal_verbs_id, main_clausal_verbs_text = self.extract_verbs(linear_dependencies, 0)
-    linear_result.append(main_clausal_verbs_text)
+    main_clausal_verbs_id, main_clausal_verbs_text = self.extract_verbs(line_dependencies, 0)
+    line_result.append(main_clausal_verbs_text)
 
     # 主節動詞主体/対象抽出
-    linear_result = self.extract_clausal_dependencies(linear_dependencies, main_clausal_verbs_id, linear_result)
-    print(linear_result)
+    line_result = self.extract_clausal_dependencies(line_dependencies, main_clausal_verbs_id, line_result)
     # サンプル用に1文章のみ実行して終了している
-    exit()
-    return linear_result
+    return line_result
 
-  # 実行関数
-  def run(self):
-    # ファイルの読み込み
-    self.file_load()
-    # ファイルが大規模になった場合に引っかかりそう。そして処理も重そう。そもそもloadで引っかかる可能性もある。
-    # それでも、できればreadlineで抜き出して正規表現で""を弾いてあげたい。
-    for row in csv.reader(self.load_file):
-      current_dependencies = []
-      for idx, sentence in enumerate(row):
-        if idx == 0:
-          current_dependencies.append([sentence])
-          continue
-        # 手が空いたらやる
-        # fixed_lines = re.sub('("[^"]*),([^"]*")','###comma###',i)
+  """
+  stanzaを用いた文章の解析。解析結果を1行ずつextract_dependsに渡し、依存関係を抽出する
+  """
+  def sentence_analysis(self, current_lines):
+    current_depends = self.nlp(current_lines)
+    for analysis_results in current_depends.sentences:
+      line_result = self.extract_dependencies(analysis_results.dependencies)
+    return line_result
 
-        # 各行の依存関係の抽出
-        result = self.nlp(sentence)
-        print("current line:"+result.text)
-        current_dependencies.append(self.extract_dependencies(result))
+# 実行関数
+def run(filepath):
+  # ファイルの読み込み
+  loaded_file = file_load(filepath)
+  all_result = []
+
+  # 構文解析用クラスの設定
+  da = DependencyAnalysis(config_gpu=False)
+  # ファイルが大規模になった場合に引っかかりそう。そして処理も重そう。そもそもloadで引っかかる可能性もある。
+  # それでも、できればreadlineで抜き出して正規表現で""を弾いてあげたい。
+  for row in csv.reader(loaded_file):
+    current_dependencies = []
+    # 手が空いたらやる
+    # fixed_lines = re.sub('("[^"]*),([^"]*")','###comma###',i)
+    # ファイル内1行をカンマ区切りで分割されたリストのループ
+    for idx, sentence in enumerate(row):
+      # 現状 "タイトル,文章,文章..." で成り立っているファイルを想定しているため、最初の一区切りはタイトルとして語彙のみデータとして持って次のループへ行く
+      if idx == 0:
+        current_dependencies.append(sentence)
+        continue
+
+      # 各行の依存関係の抽出
+      result = da.sentence_analysis(sentence)
+      #print("current line:"+sentence)
+      #print("extract result: " + str(result))
+      current_dependencies.append(result)
+    print("line ended")
+    all_result.append(current_dependencies)
+  file_close(loaded_file)
+  exit()
+  return 0
 
 
 # 現状ROCStoriesのデータセットを想定して作成
@@ -132,5 +157,5 @@ if __name__ == "__main__":
   # 既に実行端末でダウンロード済みであれば以下一行は必要なし
   # stanza.download('en')
 
-  da = DependencyAnalysis("./sample", config_gpu=False)
-  fixed_data = da.run()
+  filepath = "./sample"
+  fixed_data = run(filepath)
