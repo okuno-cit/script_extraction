@@ -1,5 +1,7 @@
 """
 issue: stanzaで構造解析を行う際に物語内の文章全て入力して同時に解析するのと一行ずつ分けて解析する場合とどちらが速度が速いか
+=>まとめての方が速そう
+issue: compound, nmod:possと増えてきたので，依存関係抽出の関数を全部一つにまとめる
 """
 import sys
 import re
@@ -55,6 +57,7 @@ class DependencyAnalysis:
   issue:cc/conjへの対応追加
   引数はextract_verbsに同じ
   """
+  # issue:conjunctionの切り分け(単一機能化)
   def extract_subject(self, dep, dependent_root_id):
     for i in dep:
       if ('subj' in i[1]) and (i[0].id == dependent_root_id):
@@ -72,6 +75,7 @@ class DependencyAnalysis:
   issue:cc/conjへの対応追加
   引数はextract_verbsに同じ
   """
+  # issue:conjunctionの切り分け(単一機能化)
   def extract_object(self, dep, dependent_root_id):
     for i in dep:
       if ('obj' in i[1]) and (i[0].id == dependent_root_id):
@@ -104,6 +108,28 @@ class DependencyAnalysis:
       if ('cc' == d[1]) and (d[0].id == dependent_root_id):
         return d[2].text + ' '
     return ''
+
+  """
+  所有格のチェック(工事中)
+  dep: 現在の文章における解析された依存関係
+  dependent_root_id: 解析したい依存関係における、より根に近い単語のID
+  """
+  def extract_nmodposs(self, dep, dependent_root_id):
+    for d in dep:
+      if (d[1] == 'nmod:poss') or (d[0].id == dependent_root_id):
+        return d[2].text
+    return False
+
+  """
+  複合語のチェック(工事中)
+  dep: 現在の文章における解析された依存関係
+  dependent_root_id: 解析したい依存関係における、より根に近い単語のID
+  """
+  def extract_nmodposs(self, dep, dependent_root_id):
+    for d in dep:
+      if (d[1] in 'compound') or (d[0].id == dependent_root_id):
+        return d[2].text
+    return False
 
   """
   節ごとの依存関係抽出(途中で目的節、主語節が見つかった場合、先に内部を抽出しに行く)
@@ -149,11 +175,11 @@ class DependencyAnalysis:
     current_depends = self.nlp(current_lines)
     # 念のため一行ずつの処理(複数文章nlpに渡すとsentencesが長さ1以上のリストになる)
     for analysis_results in current_depends.sentences:
-      line_result = line_result + self.extract_dependencies(analysis_results.dependencies)
+      line_result = line_result + self.extract_dependencies(analysis_results.dependencies) + ' # '
     return line_result
 
-# 実行関数
-def run(filepath):
+# 実行関数(rocstories)
+def run_rs(filepath):
   load_file = open(filepath, 'r')
   output_file = filepath+'_extracted'
   all_result = []
@@ -173,20 +199,37 @@ def run(filepath):
       # 各行の依存関係の抽出
       result = da.sentence_analysis(sentence)
       #current_dependencies.append(result)
-      current_dependencies = current_dependencies + result + ' # '
-    all_result.append(current_dependencies+' <EOSC>\n')
+      current_dependencies = current_dependencies + result
+    all_result.append(current_dependencies+'<EOSC>\n')
   file_write(output_file, all_result)
   load_file.close()
 
-  with open(output_file, mode='w') as f:
-      f.writelines(all_result)
+# 実行関数
+def run_wp(filepath):
+  load_file = open(filepath, 'r')
+  output_file = filepath+'_extracted'
+  all_result = []
+  da = DependencyAnalysis(config_gpu=False)
+  for line_num, row in enumerate(load_file):
+    if line_num % 1000 == 0:
+      print('execute: ' + str(line_num))
+      file_write(output_file, all_result)
+      all_result = []
+    current_dependencies = ''
+    # 各行の依存関係の抽出
+    result = da.sentence_analysis(row)
+    #current_dependencies.append(result)
+    all_result.append(result+'<EOSC>\n')
+  file_write(output_file, all_result)
+  load_file.close()
+
 
 # 現状ROCStoriesのデータセットを想定して作成
-# もし大規模になった場合は最初のfileloadとcsv解析あたりをいじればどのようなファイルでも対応可能
+# 最初のfileloadとcsv解析あたりをいじればどのようなファイルでも対応可能
 if __name__ == '__main__':
   # 既に実行端末でダウンロード済みであれば以下一行は必要なし
   # stanza.download('en')
 
-  filepath = './rocs_all.csv'
-  #filepath = './sample'
-  run(filepath)
+  filepath = './train.wp_target'
+  #fixed_data = run_rs(filepath)
+  fixed_data = run_wp(filepath)
