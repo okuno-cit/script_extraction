@@ -7,7 +7,6 @@
 [A Corpus and Cloze Evaluation for Deeper Understanding of Commonsense Stories](https://aclanthology.org/N16-1098/)にて提案された、タイトルと5文章からなる大量の物語のデータセット  
 [リンク先](https://cs.rochester.edu/nlp/rocstories/)にデータセットについてのページがあり、ページ内メールフォームから著者に連絡をとることでデータセットの取得が可能  
 比較対象として使用したものはPlan-and-以下、同データセットをタイトルと物語文章でtab分割したファイルである  
-
 また、当データセットに処理を施したものとして以下リンクの論文が提案されている  
 当該論文ではタイトルと文章に分割したデータの文章に対してRakeALgorithmを適用、各文章における要約語彙をストーリーラインとして使用した  
 [Plan-And-Write: Towards Better Automatic Storytelling](https://arxiv.org/abs/1811.05701)  
