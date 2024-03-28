@@ -19,7 +19,7 @@
 データのソースはRedditのフォーラムであり、フォーラム上で記述された物語をスクレイピングで抽出してきたものをデータセットにしている  
 また、[フォーラム](https://www.reddit.com/r/WritingPrompts/)に関しては現在も活動が続いている  
 以下リンクから当該データセットはダウンロード可能  
-[ダウンロードページ](https://www.kaggle.com/datasets/ratthachat/writing-prompts)
+[ダウンロードページ](https://www.kaggle.com/datasets/ratthachat/writing-prompts)  
 [タグ付に関する法則(How to Tag Prompts)](https://www.reddit.com/r/WritingPrompts/wiki/how_to_tag_prompts/#wiki_wp.3A_writing_prompt)  
 
 
